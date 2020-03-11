@@ -2,9 +2,9 @@ package bansslice
 
 import (
 	"context"
+	"reflect"
 
 	bansv1alpha1 "github.com/stevenchiu30801/bans5gc-operator/pkg/apis/bans/v1alpha1"
-	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -19,7 +19,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/source"
 )
 
-var log = logf.Log.WithName("controller_bansslice")
+var reqLogger = logf.Log.WithName("controller_bansslice")
 
 /**
 * USER ACTION REQUIRED: This is a scaffold file intended for the user to modify with their own Controller
@@ -53,7 +53,15 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 
 	// TODO(user): Modify this to be the types you create that are owned by the primary resource
 	// Watch for changes to secondary resource Pods and requeue the owner BansSlice
-	err = c.Watch(&source.Kind{Type: &corev1.Pod{}}, &handler.EnqueueRequestForOwner{
+	err = c.Watch(&source.Kind{Type: &bansv1alpha1.Free5GCSlice{}}, &handler.EnqueueRequestForOwner{
+		IsController: true,
+		OwnerType:    &bansv1alpha1.BansSlice{},
+	})
+	if err != nil {
+		return err
+	}
+
+	err = c.Watch(&source.Kind{Type: &bansv1alpha1.BandwidthSlice{}}, &handler.EnqueueRequestForOwner{
 		IsController: true,
 		OwnerType:    &bansv1alpha1.BansSlice{},
 	})
@@ -83,8 +91,7 @@ type ReconcileBansSlice struct {
 // The Controller will requeue the Request to be processed again if the returned error is non-nil or
 // Result.Requeue is true, otherwise upon completion it will remove the work from the queue.
 func (r *ReconcileBansSlice) Reconcile(request reconcile.Request) (reconcile.Result, error) {
-	reqLogger := log.WithValues("Request.Namespace", request.Namespace, "Request.Name", request.Name)
-	reqLogger.Info("Reconciling BansSlice")
+	reqLogger.Info("Reconciling BansSlice", "Request.Namespace", request.Namespace, "Request.Name", request.Name)
 
 	// Fetch the BansSlice instance
 	instance := &bansv1alpha1.BansSlice{}
@@ -100,54 +107,78 @@ func (r *ReconcileBansSlice) Reconcile(request reconcile.Request) (reconcile.Res
 		return reconcile.Result{}, err
 	}
 
-	// Define a new Pod object
-	pod := newPodForCR(instance)
+	// Return all bansslice in the request namespace
+	banssliceList := &bansv1alpha1.BansSliceList{}
+	opts := []client.ListOption{
+		client.InNamespace(request.NamespacedName.Namespace),
+	}
+	err = r.client.List(context.TODO(), banssliceList, opts...)
+	if err != nil {
+		return reconcile.Result{}, err
+	}
+
+	// Validate reconcile request
+	for _, item := range banssliceList.Items {
+		if reflect.DeepEqual(*instance, item) {
+			// Request itself
+			free5gcslice := &bansv1alpha1.Free5GCSlice{}
+			err := r.client.Get(context.TODO(), types.NamespacedName{Name: instance.Name + "-free5gcslice", Namespace: instance.Namespace}, free5gcslice)
+			if err != nil && errors.IsNotFound(err) {
+				// No Free5GCSlice found
+				// Break the loop and create new Free5GCSlice and BandwidthSlice objects
+				break
+			} else if err != nil {
+				reqLogger.Error(err, "Failed to get Free5GCSlice")
+				return reconcile.Result{}, err
+			}
+			// Free5GCSlice exists
+			return reconcile.Result{}, nil
+		} else if reflect.DeepEqual(instance.Spec, item.Spec) {
+			// BansSlice instance with same BansSliceSpec
+			// Return and don't requeue
+			reqLogger.Info("BansSlice instance with same BansSliceSpec exists", "BansSlice.Name", item.Name)
+			return reconcile.Result{}, nil
+		} else if reflect.DeepEqual(instance.Spec.SnssaiList, item.Spec.SnssaiList) {
+			// BansSlice instance with same BansSliceSpec.SnssaiList
+			reqLogger.Info("BansSlice instance with same BansSliceSpec.SnssaiList exists", "BansSlice.Name", item.Name)
+			reqLogger.Info("Reconfiguring BandwidthSliceSpec", "MinRate", instance.Spec.MinRate, "MaxRate", instance.Spec.MaxRate)
+			// TODO(dev): Reconfigure BandwidthSliceSpec
+			return reconcile.Result{}, nil
+		}
+	}
+
+	// Create new Free5GCSlice
+	free5gcslice := newFree5GCSlice(instance)
 
 	// Set BansSlice instance as the owner and controller
-	if err := controllerutil.SetControllerReference(instance, pod, r.scheme); err != nil {
+	if err := controllerutil.SetControllerReference(instance, free5gcslice, r.scheme); err != nil {
 		return reconcile.Result{}, err
 	}
 
-	// Check if this Pod already exists
-	found := &corev1.Pod{}
-	err = r.client.Get(context.TODO(), types.NamespacedName{Name: pod.Name, Namespace: pod.Namespace}, found)
-	if err != nil && errors.IsNotFound(err) {
-		reqLogger.Info("Creating a new Pod", "Pod.Namespace", pod.Namespace, "Pod.Name", pod.Name)
-		err = r.client.Create(context.TODO(), pod)
-		if err != nil {
-			return reconcile.Result{}, err
-		}
-
-		// Pod created successfully - don't requeue
-		return reconcile.Result{}, nil
-	} else if err != nil {
+	reqLogger.Info("Creating new free5GCSlice", "Namespace", instance.Namespace, "Name", instance.Name+"-free5gcslice")
+	err = r.client.Create(context.TODO(), free5gcslice)
+	if err != nil {
+		reqLogger.Error(err, "Failed to create new Free5GCSlice", "Namespace", free5gcslice.Namespace, "Name", free5gcslice.Name)
 		return reconcile.Result{}, err
 	}
 
-	// Pod already exists - don't requeue
-	reqLogger.Info("Skip reconcile: Pod already exists", "Pod.Namespace", found.Namespace, "Pod.Name", found.Name)
 	return reconcile.Result{}, nil
 }
 
-// newPodForCR returns a busybox pod with the same name/namespace as the cr
-func newPodForCR(cr *bansv1alpha1.BansSlice) *corev1.Pod {
+// newFree5GCSlice returns a new Free5GCSlice object with BansSliceSpec
+func newFree5GCSlice(b *bansv1alpha1.BansSlice) *bansv1alpha1.Free5GCSlice {
 	labels := map[string]string{
-		"app": cr.Name,
+		"app": b.Name,
 	}
-	return &corev1.Pod{
+	return &bansv1alpha1.Free5GCSlice{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      cr.Name + "-pod",
-			Namespace: cr.Namespace,
+			Name:      b.Name + "-free5gcslice",
+			Namespace: b.Namespace,
 			Labels:    labels,
 		},
-		Spec: corev1.PodSpec{
-			Containers: []corev1.Container{
-				{
-					Name:    "busybox",
-					Image:   "busybox",
-					Command: []string{"sleep", "3600"},
-				},
-			},
+		Spec: bansv1alpha1.Free5GCSliceSpec{
+			SnssaiList: b.Spec.SnssaiList,
+			GNBAddr:    b.Spec.GNBAddr,
 		},
 	}
 }

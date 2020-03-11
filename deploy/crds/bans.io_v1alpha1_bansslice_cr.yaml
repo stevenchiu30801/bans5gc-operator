@@ -6,6 +6,7 @@ spec:
   # Add fields here
   snssaiList:
     - sst: 1
-      sd: 010203
+      sd: "010203"
   minRate: 0
   maxRate: 5
+  gNBAddr: "192.168.2.11"

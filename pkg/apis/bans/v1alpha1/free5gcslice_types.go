@@ -7,8 +7,14 @@ import (
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
-// BansSliceSpec defines the desired state of BansSlice
-type BansSliceSpec struct {
+// S-NSSAI
+type Snssai struct {
+	Sst int32  `json:"sst"`
+	Sd  string `json:"sd"`
+}
+
+// Free5GCSliceSpec defines the desired state of Free5GCSlice
+type Free5GCSliceSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "operator-sdk generate k8s" to regenerate code after modifying this file
 	// Add custom validation using kubebuilder tags: https://book-v1.book.kubebuilder.io/beyond_basics/generating_crd.html
@@ -16,45 +22,42 @@ type BansSliceSpec struct {
 	// S-NSSAI list
 	SnssaiList []Snssai `json:"snssaiList"`
 
-	// Minimum rate of bandiwdth in Mbps
-	MinRate int `json:"minRate"`
-
-	// Maximum rate of bandiwdth in Mbps
-	MaxRate int `json:"maxRate"`
-
 	// gNodeB address
 	GNBAddr string `json:"gNBAddr"`
 }
 
-// BansSliceStatus defines the observed state of BansSlice
-type BansSliceStatus struct {
+// Free5GCSliceStatus defines the observed state of Free5GCSlice
+type Free5GCSliceStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "operator-sdk generate k8s" to regenerate code after modifying this file
 	// Add custom validation using kubebuilder tags: https://book-v1.book.kubebuilder.io/beyond_basics/generating_crd.html
+
+	// UPF address
+	UpfAddr string `json:"upfAddr"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
-// BansSlice is the Schema for the bansslice API
+// Free5GCSlice is the Schema for the free5gcslice API
 // +kubebuilder:subresource:status
-// +kubebuilder:resource:path=bansslice,scope=Namespaced
-type BansSlice struct {
+// +kubebuilder:resource:path=free5gcslice,scope=Namespaced
+type Free5GCSlice struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   BansSliceSpec   `json:"spec,omitempty"`
-	Status BansSliceStatus `json:"status,omitempty"`
+	Spec   Free5GCSliceSpec   `json:"spec,omitempty"`
+	Status Free5GCSliceStatus `json:"status,omitempty"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
-// BansSliceList contains a list of BansSlice
-type BansSliceList struct {
+// Free5GCSliceList contains a list of Free5GCSlice
+type Free5GCSliceList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []BansSlice `json:"items"`
+	Items           []Free5GCSlice `json:"items"`
 }
 
 func init() {
-	SchemeBuilder.Register(&BansSlice{}, &BansSliceList{})
+	SchemeBuilder.Register(&Free5GCSlice{}, &Free5GCSliceList{})
 }

@@ -1,20 +1,20 @@
 apiVersion: apiextensions.k8s.io/v1beta1
 kind: CustomResourceDefinition
 metadata:
-  name: bansslice.bans.io
+  name: free5gcslice.bans.io
 spec:
   group: bans.io
   names:
-    kind: BansSlice
-    listKind: BansSliceList
-    plural: bansslice
-    singular: bansslice
+    kind: Free5GCSlice
+    listKind: Free5GCSliceList
+    plural: free5gcslice
+    singular: free5gcslice
   scope: Namespaced
   subresources:
     status: {}
   validation:
     openAPIV3Schema:
-      description: BansSlice is the Schema for the bansslice API
+      description: Free5GCSlice is the Schema for the free5gcslice API
       properties:
         apiVersion:
           description: 'APIVersion defines the versioned schema of this representation
@@ -29,17 +29,11 @@ spec:
         metadata:
           type: object
         spec:
-          description: BansSliceSpec defines the desired state of BansSlice
+          description: Free5GCSliceSpec defines the desired state of Free5GCSlice
           properties:
             gNBAddr:
               description: gNodeB address
               type: string
-            maxRate:
-              description: Maximum rate of bandiwdth in Mbps
-              type: integer
-            minRate:
-              description: Minimum rate of bandiwdth in Mbps
-              type: integer
             snssaiList:
               description: S-NSSAI list
               items:
@@ -57,12 +51,16 @@ spec:
               type: array
           required:
           - gNBAddr
-          - maxRate
-          - minRate
           - snssaiList
           type: object
         status:
-          description: BansSliceStatus defines the observed state of BansSlice
+          description: Free5GCSliceStatus defines the observed state of Free5GCSlice
+          properties:
+            upfAddr:
+              description: UPF address
+              type: string
+          required:
+          - upfAddr
           type: object
       type: object
   version: v1alpha1

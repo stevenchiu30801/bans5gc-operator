@@ -7,14 +7,20 @@ import (
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
-// BansSliceSpec defines the desired state of BansSlice
-type BansSliceSpec struct {
+// Matching Flow
+type Flow struct {
+	SrcAddr  string `json:"srcAddr,omitempty"`
+	DstAddr  string `json:"dstAddr,omitempty"`
+	SrcPort  int16  `json:"srcPort,omitempty"`
+	DstPort  int16  `json:"dstPort,omitempty"`
+	protocol int8   `json:"protocol,omitempty"`
+}
+
+// BandwidthSliceSpec defines the desired state of BandwidthSlice
+type BandwidthSliceSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "operator-sdk generate k8s" to regenerate code after modifying this file
 	// Add custom validation using kubebuilder tags: https://book-v1.book.kubebuilder.io/beyond_basics/generating_crd.html
-
-	// S-NSSAI list
-	SnssaiList []Snssai `json:"snssaiList"`
 
 	// Minimum rate of bandiwdth in Mbps
 	MinRate int `json:"minRate"`
@@ -22,12 +28,12 @@ type BansSliceSpec struct {
 	// Maximum rate of bandiwdth in Mbps
 	MaxRate int `json:"maxRate"`
 
-	// gNodeB address
-	GNBAddr string `json:"gNBAddr"`
+	// Matching Flows
+	Flows []Flow `json:"flows"`
 }
 
-// BansSliceStatus defines the observed state of BansSlice
-type BansSliceStatus struct {
+// BandwidthSliceStatus defines the observed state of BandwidthSlice
+type BandwidthSliceStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "operator-sdk generate k8s" to regenerate code after modifying this file
 	// Add custom validation using kubebuilder tags: https://book-v1.book.kubebuilder.io/beyond_basics/generating_crd.html
@@ -35,26 +41,26 @@ type BansSliceStatus struct {
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
-// BansSlice is the Schema for the bansslice API
+// BandwidthSlice is the Schema for the bandwidthslice API
 // +kubebuilder:subresource:status
-// +kubebuilder:resource:path=bansslice,scope=Namespaced
-type BansSlice struct {
+// +kubebuilder:resource:path=bandwidthslice,scope=Namespaced
+type BandwidthSlice struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   BansSliceSpec   `json:"spec,omitempty"`
-	Status BansSliceStatus `json:"status,omitempty"`
+	Spec   BandwidthSliceSpec   `json:"spec,omitempty"`
+	Status BandwidthSliceStatus `json:"status,omitempty"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
-// BansSliceList contains a list of BansSlice
-type BansSliceList struct {
+// BandwidthSliceList contains a list of BandwidthSlice
+type BandwidthSliceList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []BansSlice `json:"items"`
+	Items           []BandwidthSlice `json:"items"`
 }
 
 func init() {
-	SchemeBuilder.Register(&BansSlice{}, &BansSliceList{})
+	SchemeBuilder.Register(&BandwidthSlice{}, &BandwidthSliceList{})
 }
