@@ -1,7 +1,7 @@
 apiVersion: bans.io/v1alpha1
 kind: BansSlice
 metadata:
-  name: example-bansslice
+  name: example-bansslice1
 spec:
   # Add fields here
   snssaiList:

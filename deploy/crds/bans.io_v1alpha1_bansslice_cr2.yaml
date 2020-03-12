@@ -1,0 +1,12 @@
+apiVersion: bans.io/v1alpha1
+kind: BansSlice
+metadata:
+  name: example-bansslice2
+spec:
+  # Add fields here
+  snssaiList:
+    - sst: 1
+      sd: "112233"
+  minRate: 0
+  maxRate: 10
+  gNBAddr: "192.168.2.11"
