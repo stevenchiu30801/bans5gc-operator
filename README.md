@@ -32,6 +32,9 @@ make install
 # Create a new CR
 kubectl apply -f deploy/crds/bans.io_v1alpha1_bansslice_cr1.yaml
 
+# Check if the new slice is running before proceeding
+kubectl get pods -l app.kubernetes.io/name=free5gc-smf,bans.io/slice=slice1 | grep Running
+
 # Set ransim pod variable
 export RANSIM_POD=$( kubectl get pods -l app.kubernetes.io/instance=free5gc -l app.kubernetes.io/name=ransim -o jsonpath='{.items[0].metadata.name}' )
 

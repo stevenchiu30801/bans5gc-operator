@@ -16,7 +16,7 @@ endef
 .PHONY: install uninstall build
 
 install: ## Install all resources (CR/CRD's, RBAC and Operator)
-	$(call echo_green,"....... Creating namespace .......")
+	$(call echo_green," ....... Creating namespace .......")
 	-kubectl create namespace ${NAMESPACE}
 	$(call echo_green," ....... Applying CRDs .......")
 	kubectl apply -f deploy/crds/bans.io_bansslice_crd.yaml -n ${NAMESPACE}
@@ -26,6 +26,7 @@ install: ## Install all resources (CR/CRD's, RBAC and Operator)
 	kubectl apply -f deploy/service_account.yaml -n ${NAMESPACE}
 	$(call echo_green," ....... Applying Operator .......")
 	kubectl apply -f deploy/operator.yaml -n ${NAMESPACE}
+	${SHELL} scripts/wait_pods_running.sh ${NAMESPACE}
 	# $(call echo_green," ....... Creating the CRs .......")
 	# kubectl apply -f deploy/crds/bans.io_v1alpha1_bansslice_cr.yaml -n ${NAMESPACE}
 
@@ -43,7 +44,7 @@ uninstall: ## Uninstall all that all performed in the $ make install
 	-kubectl delete namespace ${NAMESPACE}
 
 build: ## Build Operator
-	$(call echo_green,"...... Building Operator ......")
+	$(call echo_green," ...... Building Operator ......")
 	operator-sdk build steven30801/bans5gc-operator
-	$(call echo_green,"...... Pushing image ......")
+	$(call echo_green," ...... Pushing image ......")
 	docker push steven30801/bans5gc-operator
