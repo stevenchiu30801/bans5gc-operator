@@ -17,10 +17,10 @@ type BansSliceSpec struct {
 	SnssaiList []Snssai `json:"snssaiList"`
 
 	// Minimum rate of bandiwdth in Mbps
-	MinRate int `json:"minRate"`
+	MinRate uint `json:"minRate"`
 
 	// Maximum rate of bandiwdth in Mbps
-	MaxRate int `json:"maxRate"`
+	MaxRate uint `json:"maxRate"`
 
 	// gNodeB address
 	GNBAddr string `json:"gNBAddr"`

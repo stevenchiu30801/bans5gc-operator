@@ -7,13 +7,28 @@ import (
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
+// Bandwidth Slice
+type Slice struct {
+	// Minimum rate of bandiwdth in Mbps
+	MinRate *uint `json:"minRate,omitempty"`
+
+	// Maximum rate of bandiwdth in Mbps
+	MaxRate *uint `json:"maxRate,omitempty"`
+
+	// Priority
+	Priority *uint `json:"priority,omitempty"`
+
+	// Matching Flows
+	Flows []Flow `json:"flows"`
+}
+
 // Matching Flow
 type Flow struct {
 	SrcAddr  string `json:"srcAddr,omitempty"`
 	DstAddr  string `json:"dstAddr,omitempty"`
-	SrcPort  int16  `json:"srcPort,omitempty"`
-	DstPort  int16  `json:"dstPort,omitempty"`
-	protocol int8   `json:"protocol,omitempty"`
+	SrcPort  uint16 `json:"srcPort,omitempty"`
+	DstPort  uint16 `json:"dstPort,omitempty"`
+	Protocol uint8  `json:"protocol,omitempty"`
 }
 
 // BandwidthSliceSpec defines the desired state of BandwidthSlice
@@ -22,14 +37,7 @@ type BandwidthSliceSpec struct {
 	// Important: Run "operator-sdk generate k8s" to regenerate code after modifying this file
 	// Add custom validation using kubebuilder tags: https://book-v1.book.kubebuilder.io/beyond_basics/generating_crd.html
 
-	// Minimum rate of bandiwdth in Mbps
-	MinRate int `json:"minRate"`
-
-	// Maximum rate of bandiwdth in Mbps
-	MaxRate int `json:"maxRate"`
-
-	// Matching Flows
-	Flows []Flow `json:"flows"`
+	Slices []Slice `json:"slices"`
 }
 
 // BandwidthSliceStatus defines the observed state of BandwidthSlice

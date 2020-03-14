@@ -3,6 +3,8 @@ package bansslice
 import (
 	"context"
 	"reflect"
+	"strconv"
+	"time"
 
 	bansv1alpha1 "github.com/stevenchiu30801/bans5gc-operator/pkg/apis/bans/v1alpha1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -20,6 +22,19 @@ import (
 )
 
 var reqLogger = logf.Log.WithName("controller_bansslice")
+
+// State of Free5GCSlice
+const (
+	StateNull     string = ""
+	StateCreating string = "Creating"
+	StateRunning  string = "Running"
+)
+
+// IP protocol number
+const (
+	UDPProtocol  uint8 = 17
+	SCTPProtocol uint8 = 132
+)
 
 /**
 * USER ACTION REQUIRED: This is a scaffold file intended for the user to modify with their own Controller
@@ -149,18 +164,59 @@ func (r *ReconcileBansSlice) Reconcile(request reconcile.Request) (reconcile.Res
 
 	// Create new Free5GCSlice
 	free5gcslice := newFree5GCSlice(instance)
-
 	// Set BansSlice instance as the owner and controller
 	if err := controllerutil.SetControllerReference(instance, free5gcslice, r.scheme); err != nil {
 		return reconcile.Result{}, err
 	}
-
 	reqLogger.Info("Creating new free5GCSlice", "Namespace", instance.Namespace, "Name", instance.Name+"-free5gcslice")
 	err = r.client.Create(context.TODO(), free5gcslice)
 	if err != nil {
 		reqLogger.Error(err, "Failed to create new Free5GCSlice", "Namespace", free5gcslice.Namespace, "Name", free5gcslice.Name)
 		return reconcile.Result{}, err
 	}
+
+	// Wait for Free5GCSlice object being running
+	startTime := time.Now()
+	for {
+		err := r.client.Get(context.TODO(), types.NamespacedName{Name: instance.Name + "-free5gcslice", Namespace: instance.Namespace}, free5gcslice)
+		if err != nil && errors.IsNotFound(err) {
+			// No Free5GCSlice found
+			reqLogger.Info("Free5GCSlice not found after created", "Namespace", instance.Namespace, "Name", instance.Name+"-free5gcslice")
+			time.Sleep(1 * time.Second)
+			continue
+		} else if err != nil {
+			reqLogger.Error(err, "Failed to get Free5GCSlice")
+			return reconcile.Result{}, err
+		}
+		// Free5GCSlice exists
+		if free5gcslice.Status.State == StateCreating {
+			reqLogger.Info("Waiting 3 seconds for Free5GCSlice to be created", "Namespace", free5gcslice.Namespace, "Name", free5gcslice.Name)
+		} else if free5gcslice.Status.State == StateRunning {
+			endTime := time.Now()
+			elapsed := endTime.Sub(startTime)
+			msg := "Successfully create Free5GCSlice in " + strconv.FormatFloat(float64(elapsed)/float64(time.Second), 'f', 2, 64) + " seconds"
+			reqLogger.Info(msg, "Namespace", free5gcslice.Namespace, "Name", free5gcslice.Name)
+			break
+		} else {
+			// StateNull
+		}
+		time.Sleep(3 * time.Second)
+	}
+
+	// Create new BandwidthSlice for free5GC slices
+	bandwidthslice := newBandwidthSlice(instance, free5gcslice)
+	// Set BansSlice instance as the owner and controller
+	if err := controllerutil.SetControllerReference(instance, bandwidthslice, r.scheme); err != nil {
+		return reconcile.Result{}, err
+	}
+	reqLogger.Info("Creating new BandwidthSlice", "Namespace", instance.Namespace, "Name", instance.Name+"-bandwidthslice")
+	err = r.client.Create(context.TODO(), bandwidthslice)
+	if err != nil {
+		reqLogger.Error(err, "Failed to create new BandwidthSlice", "Namespace", bandwidthslice.Namespace, "Name", bandwidthslice.Name)
+		return reconcile.Result{}, err
+	}
+
+	// TODO(dev): Configure free5GC NSSF with the new created slice
 
 	return reconcile.Result{}, nil
 }
@@ -179,6 +235,59 @@ func newFree5GCSlice(b *bansv1alpha1.BansSlice) *bansv1alpha1.Free5GCSlice {
 		Spec: bansv1alpha1.Free5GCSliceSpec{
 			SnssaiList: b.Spec.SnssaiList,
 			GNBAddr:    b.Spec.GNBAddr,
+		},
+	}
+}
+
+// newBandwidthSlice returns a new BandwidthSlice object with BansSliceSpec and Free5GCSliceStatus
+func newBandwidthSlice(b *bansv1alpha1.BansSlice, f *bansv1alpha1.Free5GCSlice) *bansv1alpha1.BandwidthSlice {
+	labels := map[string]string{
+		"app": b.Name,
+	}
+	var (
+		priority uint = 2
+		minRate  uint = b.Spec.MinRate
+		maxRate  uint = b.Spec.MaxRate
+	)
+	return &bansv1alpha1.BandwidthSlice{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      b.Name + "-bandwidthslice",
+			Namespace: b.Namespace,
+			Labels:    labels,
+		},
+		Spec: bansv1alpha1.BandwidthSliceSpec{
+			Slices: []bansv1alpha1.Slice{
+				// Control traffic slice
+				{
+					Priority: &priority,
+					Flows: []bansv1alpha1.Flow{
+						// Uplink
+						{
+							SrcAddr:  b.Spec.GNBAddr,
+							DstAddr:  f.Status.AmfAddr,
+							Protocol: SCTPProtocol,
+						},
+						// Downlink
+						{
+							SrcAddr:  f.Status.AmfAddr,
+							DstAddr:  b.Spec.GNBAddr,
+							Protocol: SCTPProtocol,
+						},
+					},
+				},
+				// Downlink data traffic slice
+				{
+					MinRate: &minRate,
+					MaxRate: &maxRate,
+					Flows: []bansv1alpha1.Flow{
+						{
+							SrcAddr:  f.Status.UpfAddr,
+							DstAddr:  b.Spec.GNBAddr,
+							Protocol: UDPProtocol,
+						},
+					},
+				},
+			},
 		},
 	}
 }

@@ -31,33 +31,42 @@ spec:
         spec:
           description: BandwidthSliceSpec defines the desired state of BandwidthSlice
           properties:
-            flows:
-              description: Matching Flows
+            slices:
               items:
-                description: Matching Flow
+                description: Bandwidth Slice
                 properties:
-                  dstAddr:
-                    type: string
-                  dstPort:
+                  flows:
+                    description: Matching Flows
+                    items:
+                      description: Matching Flow
+                      properties:
+                        dstAddr:
+                          type: string
+                        dstPort:
+                          type: integer
+                        protocol:
+                          type: integer
+                        srcAddr:
+                          type: string
+                        srcPort:
+                          type: integer
+                      type: object
+                    type: array
+                  maxRate:
+                    description: Maximum rate of bandiwdth in Mbps
                     type: integer
-                  protocol:
+                  minRate:
+                    description: Minimum rate of bandiwdth in Mbps
                     type: integer
-                  srcAddr:
-                    type: string
-                  srcPort:
+                  priority:
+                    description: Priority
                     type: integer
+                required:
+                - flows
                 type: object
               type: array
-            maxRate:
-              description: Maximum rate of bandiwdth in Mbps
-              type: integer
-            minRate:
-              description: Minimum rate of bandiwdth in Mbps
-              type: integer
           required:
-          - flows
-          - maxRate
-          - minRate
+          - slices
           type: object
         status:
           description: BandwidthSliceStatus defines the observed state of BandwidthSlice
