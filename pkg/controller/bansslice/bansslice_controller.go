@@ -122,6 +122,78 @@ func (r *ReconcileBansSlice) Reconcile(request reconcile.Request) (reconcile.Res
 		return reconcile.Result{}, err
 	}
 
+	// Check if Free5GCSlice of corresponding BansSlice already exists
+	free5gcslice := &bansv1alpha1.Free5GCSlice{}
+	err = r.client.Get(context.TODO(), types.NamespacedName{Name: instance.Name + "-free5gcslice", Namespace: instance.Namespace}, free5gcslice)
+	if err != nil && errors.IsNotFound(err) {
+		// No Free5GCSlice found
+		// Continue reconciling
+	} else if err != nil {
+		reqLogger.Error(err, "Failed to get Free5GCSlice")
+		return reconcile.Result{}, err
+	} else {
+		// Free5GCSlice exists
+		// Check if BansSliceSpec.SnssaiList or BansSliceSpec.GNBAddr is reconfigured
+		if !reflect.DeepEqual(instance.Spec.SnssaiList, free5gcslice.Spec.SnssaiList) || instance.Spec.GNBAddr != free5gcslice.Spec.GNBAddr {
+			// Remove the original Free5GCSlice and BandwidthSlice for reconfiguration
+			err := r.client.Delete(context.TODO(), free5gcslice, client.GracePeriodSeconds(5))
+			if err != nil {
+				return reconcile.Result{}, err
+			}
+
+			// Wait for Free5GCSlice being removed
+			for {
+				free5gcslice := &bansv1alpha1.Free5GCSlice{}
+				err := r.client.Get(context.TODO(), types.NamespacedName{Name: instance.Name + "-free5gcslice", Namespace: instance.Namespace}, free5gcslice)
+				if err != nil && errors.IsNotFound(err) {
+					break
+				} else if err != nil {
+					return reconcile.Result{}, err
+				}
+				time.Sleep(1 * time.Second)
+			}
+
+			bandwidthslice := &bansv1alpha1.BandwidthSlice{}
+			err = r.client.Get(context.TODO(), types.NamespacedName{Name: instance.Name + "-bandwidthslice", Namespace: instance.Namespace}, bandwidthslice)
+			if err != nil && errors.IsNotFound(err) {
+				// No BandwidthSlice exists
+				reqLogger.Info("No BandwidthSlice exists for BansSlice", "BansSlice.Namespace", instance.Namespace, "BansSlice.Name", instance.Name)
+			} else if err != nil {
+				return reconcile.Result{}, err
+			} else {
+				err := r.client.Delete(context.TODO(), bandwidthslice, client.GracePeriodSeconds(5))
+				if err != nil {
+					return reconcile.Result{}, err
+				}
+			}
+		} else {
+			// BansSliceSpec.SnssaiList and BansSliceSpec.GNBAddr are the same
+			// Reconfigure BandwidthSlice if needed
+			bandwidthslice := &bansv1alpha1.BandwidthSlice{}
+			err := r.client.Get(context.TODO(), types.NamespacedName{Name: instance.Name + "-bandwidthslice", Namespace: instance.Namespace}, bandwidthslice)
+			if err != nil && errors.IsNotFound(err) {
+				// No BandwidthSlice exists
+				reqLogger.Info("No BandwidthSlice exists for BansSlice", "BansSlice.Namespace", instance.Namespace, "BansSlice.Name", instance.Name)
+				return reconcile.Result{Requeue: true}, nil
+			} else if err != nil {
+				return reconcile.Result{}, err
+			}
+
+			targetBandwidthSlice := newBandwidthSlice(instance, free5gcslice)
+			if !reflect.DeepEqual(targetBandwidthSlice.Spec, bandwidthslice.Spec) {
+				// Update BandwidthSlice
+				reqLogger.Info("Reconfiguring BandwidthSliceSpec", "MinRate", instance.Spec.MinRate, "MaxRate", instance.Spec.MaxRate)
+				bandwidthslice.Spec = targetBandwidthSlice.Spec
+				if err := r.client.Update(context.Background(), bandwidthslice); err != nil {
+					return reconcile.Result{}, err
+				}
+				reqLogger.Info("Successfully reconfigure BandwidthSlice", "Namespace", bandwidthslice.Namespace, "Name", bandwidthslice.Name)
+			}
+
+			return reconcile.Result{}, nil
+		}
+	}
+
 	// Return all bansslice in the request namespace
 	banssliceList := &bansv1alpha1.BansSliceList{}
 	opts := []client.ListOption{
@@ -136,36 +208,50 @@ func (r *ReconcileBansSlice) Reconcile(request reconcile.Request) (reconcile.Res
 	for _, item := range banssliceList.Items {
 		if reflect.DeepEqual(*instance, item) {
 			// Request itself
-			free5gcslice := &bansv1alpha1.Free5GCSlice{}
-			err := r.client.Get(context.TODO(), types.NamespacedName{Name: instance.Name + "-free5gcslice", Namespace: instance.Namespace}, free5gcslice)
-			if err != nil && errors.IsNotFound(err) {
-				// No Free5GCSlice found
-				// Break the loop and create new Free5GCSlice and BandwidthSlice objects
-				break
-			} else if err != nil {
-				reqLogger.Error(err, "Failed to get Free5GCSlice")
-				return reconcile.Result{}, err
-			}
-			// Free5GCSlice exists
-			return reconcile.Result{}, nil
+			continue
 		} else if reflect.DeepEqual(instance.Spec, item.Spec) {
 			// BansSlice instance with same BansSliceSpec
 			// Return and don't requeue
 			reqLogger.Info("BansSlice instance with same BansSliceSpec exists", "BansSlice.Name", item.Name)
 			return reconcile.Result{}, nil
-		} else if reflect.DeepEqual(instance.Spec.SnssaiList, item.Spec.SnssaiList) {
+		} else if reflect.DeepEqual(instance.Spec.SnssaiList, item.Spec.SnssaiList) && instance.Spec.GNBAddr == item.Spec.GNBAddr {
 			// BansSlice instance with same BansSliceSpec.SnssaiList
-			reqLogger.Info("BansSlice instance with same BansSliceSpec.SnssaiList exists", "BansSlice.Name", item.Name)
-			reqLogger.Info("Reconfiguring BandwidthSliceSpec", "MinRate", instance.Spec.MinRate, "MaxRate", instance.Spec.MaxRate)
-			// TODO(dev): Reconfigure BandwidthSliceSpec
+			reqLogger.Info("BansSlice instance with same BansSliceSpec.SnssaiList and BansSliceSpec.GNBAddr exists", "BansSlice.Name", item.Name)
+
+			// Check if BandwidthSlice already exists
+			bandwidthslice := &bansv1alpha1.BandwidthSlice{}
+			err := r.client.Get(context.TODO(), types.NamespacedName{Name: instance.Name + "-bandwidthslice", Namespace: instance.Namespace}, bandwidthslice)
+			if err != nil && errors.IsNotFound(err) {
+				// No BandwidthSlice exists
+				reqLogger.Info("No BandwidthSlice exists for BansSlice", "BansSlice.Namespace", instance.Namespace, "BansSlice.Name", instance.Name)
+				// Create new BandwidthSlice only for free5GC slices
+				free5gcslice := newFree5GCSlice(instance)
+				bandwidthslice := newBandwidthSlice(instance, free5gcslice)
+				// Set BansSlice instance as the owner and controller
+				if err := controllerutil.SetControllerReference(instance, bandwidthslice, r.scheme); err != nil {
+					return reconcile.Result{}, err
+				}
+				reqLogger.Info("Creating new BandwidthSlice", "Namespace", instance.Namespace, "Name", instance.Name+"-bandwidthslice")
+				err = r.client.Create(context.TODO(), bandwidthslice)
+				if err != nil {
+					reqLogger.Error(err, "Failed to create new BandwidthSlice", "Namespace", bandwidthslice.Namespace, "Name", bandwidthslice.Name)
+					return reconcile.Result{}, err
+				}
+
+				reqLogger.Info("Successfully create new BandwidthSlice", "Namespace", bandwidthslice.Namespace, "Name", bandwidthslice.Name)
+				return reconcile.Result{}, nil
+			} else if err != nil {
+				return reconcile.Result{}, err
+			}
+			// BandwidthSlice exists
 			return reconcile.Result{}, nil
 		}
 	}
 
 	// Create new Free5GCSlice
-	free5gcslice := newFree5GCSlice(instance)
+	free5gcslice = newFree5GCSlice(instance)
 	// Set BansSlice instance as the owner and controller
-	if err := controllerutil.SetControllerReference(instance, free5gcslice, r.scheme); err != nil {
+	if err = controllerutil.SetControllerReference(instance, free5gcslice, r.scheme); err != nil {
 		return reconcile.Result{}, err
 	}
 	reqLogger.Info("Creating new free5GCSlice", "Namespace", instance.Namespace, "Name", instance.Name+"-free5gcslice")
@@ -215,6 +301,7 @@ func (r *ReconcileBansSlice) Reconcile(request reconcile.Request) (reconcile.Res
 		reqLogger.Error(err, "Failed to create new BandwidthSlice", "Namespace", bandwidthslice.Namespace, "Name", bandwidthslice.Name)
 		return reconcile.Result{}, err
 	}
+	reqLogger.Info("Successfully create new BandwidthSlice", "Namespace", bandwidthslice.Namespace, "Name", bandwidthslice.Name)
 
 	// TODO(dev): Configure free5GC NSSF with the new created slice
 
