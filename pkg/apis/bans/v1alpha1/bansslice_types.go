@@ -7,6 +7,18 @@ import (
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
+// PLMN ID
+type PlmnId struct {
+	Mcc string `json:"mcc"`
+	Mnc string `json:"mnc"`
+}
+
+// TAI
+type Tai struct {
+	PlmnId PlmnId `json:"plmnId"`
+	Tac    string `json:"tac"`
+}
+
 // BansSliceSpec defines the desired state of BansSlice
 type BansSliceSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
@@ -24,6 +36,9 @@ type BansSliceSpec struct {
 
 	// gNodeB address
 	GNBAddr string `json:"gNBAddr"`
+
+	// TAI
+	Tai Tai `json:"tai"`
 }
 
 // BansSliceStatus defines the observed state of BansSlice

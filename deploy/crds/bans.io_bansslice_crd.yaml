@@ -55,11 +55,32 @@ spec:
                 - sst
                 type: object
               type: array
+            tai:
+              description: TAI
+              properties:
+                plmnId:
+                  description: PLMN ID
+                  properties:
+                    mcc:
+                      type: string
+                    mnc:
+                      type: string
+                  required:
+                  - mcc
+                  - mnc
+                  type: object
+                tac:
+                  type: string
+              required:
+              - plmnId
+              - tac
+              type: object
           required:
           - gNBAddr
           - maxRate
           - minRate
           - snssaiList
+          - tai
           type: object
         status:
           description: BansSliceStatus defines the observed state of BansSlice

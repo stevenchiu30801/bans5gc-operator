@@ -10,3 +10,8 @@ spec:
   minRate: 0
   maxRate: 10
   gNBAddr: "192.168.2.11"
+  tai:
+    plmnId:
+      mcc: "208"
+      mnc: "93"
+    tac: "1"

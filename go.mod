@@ -7,6 +7,7 @@ require (
 	github.com/spf13/pflag v1.0.5
 	github.com/stevenchiu30801/free5gc-operator v0.0.0-20200310120742-979915e7a217
 	github.com/stevenchiu30801/onos-bandwidth-operator v0.0.0-20200311015808-db0ea2e97291
+	golang.org/x/net v0.0.0-20191028085509-fe3aa8a45271
 	k8s.io/api v0.0.0
 	k8s.io/apimachinery v0.0.0
 	k8s.io/client-go v12.0.0+incompatible

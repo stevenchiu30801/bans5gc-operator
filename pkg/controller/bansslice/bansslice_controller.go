@@ -1,12 +1,19 @@
 package bansslice
 
 import (
+	"bytes"
 	"context"
+	"crypto/tls"
+	"encoding/json"
+	"io/ioutil"
+	"net/http"
 	"reflect"
 	"strconv"
 	"time"
 
 	bansv1alpha1 "github.com/stevenchiu30801/bans5gc-operator/pkg/apis/bans/v1alpha1"
+	"golang.org/x/net/http2"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -303,7 +310,60 @@ func (r *ReconcileBansSlice) Reconcile(request reconcile.Request) (reconcile.Res
 	}
 	reqLogger.Info("Successfully create new BandwidthSlice", "Namespace", bandwidthslice.Namespace, "Name", bandwidthslice.Name)
 
-	// TODO(dev): Configure free5GC NSSF with the new created slice
+	// TODO(dev): Wait for ONOS Bandwidth Management flows being added
+
+	// Return all NSSFs
+	nssfList := &corev1.PodList{}
+	opts = []client.ListOption{
+		client.InNamespace(instance.Namespace),
+		client.MatchingLabels(map[string]string{"app.kubernetes.io/instance": "free5gc", "app.kubernetes.io/name": "nssf"}),
+	}
+	err = r.client.List(context.TODO(), nssfList, opts...)
+	if err != nil {
+		return reconcile.Result{}, err
+	}
+
+	// Configure all NSSFs through management REST API
+	client := &http.Client{}
+	client.Transport = &http2.Transport{
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+	}
+	nssfManagementDocument, err := r.newNssfManagementDocument(instance)
+	if err != nil {
+		reqLogger.Error(err, "Cannot generate NSSF management object")
+		return reconcile.Result{}, nil
+	}
+	buf, err := json.Marshal(nssfManagementDocument)
+	if err != nil {
+		reqLogger.Error(err, "Cannot marshal NssfManagementDocument to JSON format")
+		return reconcile.Result{}, nil
+	}
+	for _, nssf := range nssfList.Items {
+		nssfIp := nssf.Status.PodIP
+		reqLogger.Info("Configuring NSSF with new S-NSSAI list through management REST API", "PodIP", nssfIp, "S-NSSAIList", instance.Spec.SnssaiList)
+		req, err := http.NewRequest("POST",
+			"https://"+nssfIp+":29531/nnssf-management/v1/network-slice-information",
+			bytes.NewReader(buf))
+		if err != nil {
+			return reconcile.Result{}, err
+		}
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := client.Do(req)
+		if err != nil {
+			return reconcile.Result{}, err
+		}
+
+		// Read response from NSSF
+		if resp.StatusCode == http.StatusCreated {
+			reqLogger.Info("Successfully configure NSSF", "PodIP", nssfIp)
+		} else {
+			defer resp.Body.Close()
+			buf, err = ioutil.ReadAll(resp.Body)
+			if err != nil {
+				return reconcile.Result{}, err
+			}
+		}
+	}
 
 	return reconcile.Result{}, nil
 }
