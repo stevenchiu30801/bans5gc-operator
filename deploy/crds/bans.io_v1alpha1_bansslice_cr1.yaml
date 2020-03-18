@@ -9,7 +9,7 @@ spec:
       sd: "010203"
   minRate: 0
   maxRate: 5
-  gNBAddr: "192.168.2.11"
+  gNBAddr: "192.168.3.11"
   tai:
     plmnId:
       mcc: "208"
