@@ -362,6 +362,7 @@ func (r *ReconcileBansSlice) Reconcile(request reconcile.Request) (reconcile.Res
 			if err != nil {
 				return reconcile.Result{}, err
 			}
+			reqLogger.Info("Fail to configure NSSF", "ResponseBody", buf)
 		}
 	}
 
