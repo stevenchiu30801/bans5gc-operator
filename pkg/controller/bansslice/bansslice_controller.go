@@ -310,8 +310,6 @@ func (r *ReconcileBansSlice) Reconcile(request reconcile.Request) (reconcile.Res
 	}
 	reqLogger.Info("Successfully create new BandwidthSlice", "Namespace", bandwidthslice.Namespace, "Name", bandwidthslice.Name)
 
-	// TODO(dev): Wait for ONOS Bandwidth Management flows being added
-
 	// Return all NSSFs
 	nssfList := &corev1.PodList{}
 	opts = []client.ListOption{
@@ -362,7 +360,7 @@ func (r *ReconcileBansSlice) Reconcile(request reconcile.Request) (reconcile.Res
 			if err != nil {
 				return reconcile.Result{}, err
 			}
-			reqLogger.Info("Failed to configure NSSF", "ResponseBody", buf)
+			reqLogger.Info("Failed to configure NSSF", "HTTPStatus", resp.Status, "ResponseBody", buf)
 		}
 	}
 
