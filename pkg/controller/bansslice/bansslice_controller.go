@@ -32,9 +32,16 @@ var reqLogger = logf.Log.WithName("controller_bansslice")
 
 // State of Free5GCSlice
 const (
-	StateNull     string = ""
-	StateCreating string = "Creating"
-	StateRunning  string = "Running"
+	Free5GCSliceStateNull     string = ""
+	Free5GCSliceStateCreating string = "Creating"
+	Free5GCSliceStateRunning  string = "Running"
+)
+
+// State of BandwidthSlice
+const (
+	BandwidthSliceStateNull    string = ""
+	BandwidthSliceStatePending string = "Pending"
+	BandwidthSliceStateAdded   string = "Added"
 )
 
 // IP protocol number
@@ -191,6 +198,7 @@ func (r *ReconcileBansSlice) Reconcile(request reconcile.Request) (reconcile.Res
 				// Update BandwidthSlice
 				reqLogger.Info("Reconfiguring BandwidthSliceSpec", "MinRate", instance.Spec.MinRate, "MaxRate", instance.Spec.MaxRate)
 				bandwidthslice.Spec = targetBandwidthSlice.Spec
+				bandwidthslice.Status.State = BandwidthSliceStateNull
 				if err := r.client.Update(context.Background(), bandwidthslice); err != nil {
 					return reconcile.Result{}, err
 				}
@@ -261,7 +269,7 @@ func (r *ReconcileBansSlice) Reconcile(request reconcile.Request) (reconcile.Res
 	if err = controllerutil.SetControllerReference(instance, free5gcslice, r.scheme); err != nil {
 		return reconcile.Result{}, err
 	}
-	reqLogger.Info("Creating new free5GCSlice", "Namespace", instance.Namespace, "Name", instance.Name+"-free5gcslice")
+	reqLogger.Info("Creating new free5gcslice", "Namespace", instance.Namespace, "Name", instance.Name+"-free5gcslice")
 	err = r.client.Create(context.TODO(), free5gcslice)
 	if err != nil {
 		reqLogger.Error(err, "Failed to create new Free5GCSlice", "Namespace", free5gcslice.Namespace, "Name", free5gcslice.Name)
@@ -282,9 +290,9 @@ func (r *ReconcileBansSlice) Reconcile(request reconcile.Request) (reconcile.Res
 			return reconcile.Result{}, err
 		}
 		// Free5GCSlice exists
-		if free5gcslice.Status.State == StateCreating {
+		if free5gcslice.Status.State == Free5GCSliceStateCreating {
 			reqLogger.Info("Waiting 3 seconds for Free5GCSlice to be created", "Namespace", free5gcslice.Namespace, "Name", free5gcslice.Name)
-		} else if free5gcslice.Status.State == StateRunning {
+		} else if free5gcslice.Status.State == Free5GCSliceStateRunning {
 			endTime := time.Now()
 			elapsed := endTime.Sub(startTime)
 			msg := "Successfully create Free5GCSlice in " + strconv.FormatFloat(float64(elapsed)/float64(time.Second), 'f', 2, 64) + " seconds"
@@ -309,6 +317,34 @@ func (r *ReconcileBansSlice) Reconcile(request reconcile.Request) (reconcile.Res
 		return reconcile.Result{}, err
 	}
 	reqLogger.Info("Successfully create new BandwidthSlice", "Namespace", bandwidthslice.Namespace, "Name", bandwidthslice.Name)
+
+	// Wait for BandwidthSlice object being added
+	startTime = time.Now()
+	for {
+		err := r.client.Get(context.TODO(), types.NamespacedName{Name: instance.Name + "-bandwidthslice", Namespace: instance.Namespace}, bandwidthslice)
+		if err != nil && errors.IsNotFound(err) {
+			// No BandwidthSlice found
+			reqLogger.Info("BandwidthSlice not found after created", "Namespace", instance.Namespace, "Name", instance.Name+"-bandwidthslice")
+			time.Sleep(1 * time.Second)
+			continue
+		} else if err != nil {
+			reqLogger.Error(err, "Failed to get BandwidthSlice")
+			return reconcile.Result{}, err
+		}
+		// BandwidthSlice exists
+		if bandwidthslice.Status.State == BandwidthSliceStatePending {
+			reqLogger.Info("Waiting 3 seconds for BandwidthSlice to be added", "Namespace", bandwidthslice.Namespace, "Name", bandwidthslice.Name)
+		} else if bandwidthslice.Status.State == BandwidthSliceStateAdded {
+			endTime := time.Now()
+			elapsed := endTime.Sub(startTime)
+			msg := "Successfully create BandwidthSlice in " + strconv.FormatFloat(float64(elapsed)/float64(time.Second), 'f', 2, 64) + " seconds"
+			reqLogger.Info(msg, "Namespace", bandwidthslice.Namespace, "Name", bandwidthslice.Name)
+			break
+		} else {
+			// StateNull
+		}
+		time.Sleep(3 * time.Second)
+	}
 
 	// Return all NSSFs
 	nssfList := &corev1.PodList{}

@@ -70,6 +70,12 @@ spec:
           type: object
         status:
           description: BandwidthSliceStatus defines the observed state of BandwidthSlice
+          properties:
+            state:
+              description: State of Bandwidth slice
+              type: string
+          required:
+          - state
           type: object
       type: object
   version: v1alpha1
