@@ -16,7 +16,7 @@ spec:
       containers:
         - name: bans5gc-operator
           # Replace this with the built image name
-          image: steven30801/bans5gc-operator
+          image: steven30801/bans5gc-operator:bmv2-fabric
           command:
           - bans5gc-operator
           imagePullPolicy: Always
