@@ -84,6 +84,12 @@ spec:
           type: object
         status:
           description: BansSliceStatus defines the observed state of BansSlice
+          properties:
+            ready:
+              description: Ready state of BANS Slice
+              type: boolean
+          required:
+          - ready
           type: object
       type: object
   version: v1alpha1

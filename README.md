@@ -32,8 +32,8 @@ make install
 # Create a new CR
 kubectl apply -f deploy/crds/bans.io_v1alpha1_bansslice_cr1.yaml
 
-# Check if the new slice is running before proceeding
-kubectl get pods -l app.kubernetes.io/name=free5gc-smf,bans.io/slice=slice1 | grep Running
+# Check if status of the new slice is ready before proceeding
+kubectl describe bansslice.bans.io example-bansslice1 | grep -A 1 Status
 
 # Set ransim pod variable
 export RANSIM_POD=$( kubectl get pods -l app.kubernetes.io/instance=free5gc -l app.kubernetes.io/name=ransim -o jsonpath='{.items[0].metadata.name}' )
@@ -44,8 +44,8 @@ kubectl exec $RANSIM_POD -- bash -c "cd src/test && go test -vet=off -run TestRe
 # Create a new CR
 kubectl apply -f deploy/crds/bans.io_v1alpha1_bansslice_cr2.yaml
 
-# Check if the new slice is running before proceeding
-kubectl get pods -l app.kubernetes.io/name=free5gc-smf,bans.io/slice=slice2 | grep Running
+# Check if status of the new slice is ready before proceeding
+kubectl describe bansslice.bans.io example-bansslice2 | grep -A 1 Status
 
 # Test registration and data traffic with slice 2
 kubectl exec $RANSIM_POD -- bash -c "cd src/test && go test -vet=off -run TestRegistration -ue-idx=2 -sst=1 -sd=112233"
