@@ -149,6 +149,16 @@ func (r *ReconcileBansSlice) Reconcile(request reconcile.Request) (reconcile.Res
 		// Free5GCSlice exists
 		// Check if BansSliceSpec.SnssaiList or BansSliceSpec.GNBAddr is reconfigured
 		if !reflect.DeepEqual(instance.Spec.SnssaiList, free5gcslice.Spec.SnssaiList) || instance.Spec.GNBAddr != free5gcslice.Spec.GNBAddr {
+			// Update BansSlice.Status.Ready
+			instance.Status.Ready = false
+			err = r.client.Status().Update(context.TODO(), instance)
+			if err != nil {
+				reqLogger.Error(err, "Failed to update BansSlice status")
+				return reconcile.Result{}, err
+			}
+
+			// TODO(dev): First remove the slice information in NSSFs through management interface
+
 			// Remove the original Free5GCSlice and BandwidthSlice for reconfiguration
 			err := r.client.Delete(context.TODO(), free5gcslice, client.GracePeriodSeconds(5))
 			if err != nil {
@@ -195,6 +205,14 @@ func (r *ReconcileBansSlice) Reconcile(request reconcile.Request) (reconcile.Res
 
 			targetBandwidthSlice := newBandwidthSlice(instance, free5gcslice)
 			if !reflect.DeepEqual(targetBandwidthSlice.Spec, bandwidthslice.Spec) {
+				// Update BansSlice.Status.Ready
+				instance.Status.Ready = false
+				err = r.client.Status().Update(context.TODO(), instance)
+				if err != nil {
+					reqLogger.Error(err, "Failed to update BansSlice status")
+					return reconcile.Result{}, err
+				}
+
 				// Update BandwidthSlice
 				reqLogger.Info("Reconfiguring BandwidthSliceSpec", "MinRate", instance.Spec.MinRate, "MaxRate", instance.Spec.MaxRate)
 				bandwidthslice.Spec = targetBandwidthSlice.Spec
@@ -202,6 +220,17 @@ func (r *ReconcileBansSlice) Reconcile(request reconcile.Request) (reconcile.Res
 				if err := r.client.Update(context.Background(), bandwidthslice); err != nil {
 					return reconcile.Result{}, err
 				}
+				// Wait for BandwidthSlice object being added
+				r.waitForBandwidthSlice(bandwidthslice.Name, bandwidthslice.Namespace)
+
+				// Update BansSlice.Status.Ready
+				instance.Status.Ready = true
+				err = r.client.Status().Update(context.TODO(), instance)
+				if err != nil {
+					reqLogger.Error(err, "Failed to update BansSlice status")
+					return reconcile.Result{}, err
+				}
+
 				reqLogger.Info("Successfully reconfigure BandwidthSlice", "Namespace", bandwidthslice.Namespace, "Name", bandwidthslice.Name)
 			}
 
@@ -252,6 +281,23 @@ func (r *ReconcileBansSlice) Reconcile(request reconcile.Request) (reconcile.Res
 					reqLogger.Error(err, "Failed to create new BandwidthSlice", "Namespace", bandwidthslice.Namespace, "Name", bandwidthslice.Name)
 					return reconcile.Result{}, err
 				}
+				// Wait for BandwidthSlice object being added
+				r.waitForBandwidthSlice(bandwidthslice.Name, bandwidthslice.Namespace)
+
+				// Configure all NSSFs through management REST API
+				err = r.configureNssfs(instance)
+				if err != nil {
+					// Failed to activate BansSlice, return and don't requeue
+					return reconcile.Result{}, nil
+				}
+
+				// Update BansSlice.Status.Ready
+				instance.Status.Ready = true
+				err = r.client.Status().Update(context.TODO(), instance)
+				if err != nil {
+					reqLogger.Error(err, "Failed to update BansSlice status")
+					return reconcile.Result{}, err
+				}
 
 				reqLogger.Info("Successfully create new BandwidthSlice", "Namespace", bandwidthslice.Namespace, "Name", bandwidthslice.Name)
 				return reconcile.Result{}, nil
@@ -277,32 +323,7 @@ func (r *ReconcileBansSlice) Reconcile(request reconcile.Request) (reconcile.Res
 	}
 
 	// Wait for Free5GCSlice object being running
-	startTime := time.Now()
-	for {
-		err := r.client.Get(context.TODO(), types.NamespacedName{Name: instance.Name + "-free5gcslice", Namespace: instance.Namespace}, free5gcslice)
-		if err != nil && errors.IsNotFound(err) {
-			// No Free5GCSlice found
-			reqLogger.Info("Free5GCSlice not found after created", "Namespace", instance.Namespace, "Name", instance.Name+"-free5gcslice")
-			time.Sleep(1 * time.Second)
-			continue
-		} else if err != nil {
-			reqLogger.Error(err, "Failed to get Free5GCSlice")
-			return reconcile.Result{}, err
-		}
-		// Free5GCSlice exists
-		if free5gcslice.Status.State == Free5GCSliceStateCreating {
-			reqLogger.Info("Waiting 3 seconds for Free5GCSlice to be created", "Namespace", free5gcslice.Namespace, "Name", free5gcslice.Name)
-		} else if free5gcslice.Status.State == Free5GCSliceStateRunning {
-			endTime := time.Now()
-			elapsed := endTime.Sub(startTime)
-			msg := "Successfully create Free5GCSlice in " + strconv.FormatFloat(float64(elapsed)/float64(time.Second), 'f', 2, 64) + " seconds"
-			reqLogger.Info(msg, "Namespace", free5gcslice.Namespace, "Name", free5gcslice.Name)
-			break
-		} else {
-			// StateNull
-		}
-		time.Sleep(3 * time.Second)
-	}
+	r.waitForFree5GCSlice(instance.Name+"-free5gcslice", instance.Namespace)
 
 	// Create new BandwidthSlice for free5GC slices
 	bandwidthslice := newBandwidthSlice(instance, free5gcslice)
@@ -316,88 +337,23 @@ func (r *ReconcileBansSlice) Reconcile(request reconcile.Request) (reconcile.Res
 		reqLogger.Error(err, "Failed to create new BandwidthSlice", "Namespace", bandwidthslice.Namespace, "Name", bandwidthslice.Name)
 		return reconcile.Result{}, err
 	}
-	reqLogger.Info("Successfully create new BandwidthSlice", "Namespace", bandwidthslice.Namespace, "Name", bandwidthslice.Name)
 
 	// Wait for BandwidthSlice object being added
-	startTime = time.Now()
-	for {
-		err := r.client.Get(context.TODO(), types.NamespacedName{Name: instance.Name + "-bandwidthslice", Namespace: instance.Namespace}, bandwidthslice)
-		if err != nil && errors.IsNotFound(err) {
-			// No BandwidthSlice found
-			reqLogger.Info("BandwidthSlice not found after created", "Namespace", instance.Namespace, "Name", instance.Name+"-bandwidthslice")
-			time.Sleep(1 * time.Second)
-			continue
-		} else if err != nil {
-			reqLogger.Error(err, "Failed to get BandwidthSlice")
-			return reconcile.Result{}, err
-		}
-		// BandwidthSlice exists
-		if bandwidthslice.Status.State == BandwidthSliceStatePending {
-			reqLogger.Info("Waiting 3 seconds for BandwidthSlice to be added", "Namespace", bandwidthslice.Namespace, "Name", bandwidthslice.Name)
-		} else if bandwidthslice.Status.State == BandwidthSliceStateAdded {
-			endTime := time.Now()
-			elapsed := endTime.Sub(startTime)
-			msg := "Successfully create BandwidthSlice in " + strconv.FormatFloat(float64(elapsed)/float64(time.Second), 'f', 2, 64) + " seconds"
-			reqLogger.Info(msg, "Namespace", bandwidthslice.Namespace, "Name", bandwidthslice.Name)
-			break
-		} else {
-			// StateNull
-		}
-		time.Sleep(3 * time.Second)
+	r.waitForBandwidthSlice(instance.Name+"-bandwidthslice", instance.Namespace)
+
+	// Configure all NSSFs with the new slice
+	err = r.configureNssfs(instance)
+	if err != nil {
+		// Failed to activate BansSlice, return and don't requeue
+		return reconcile.Result{}, nil
 	}
 
-	// Return all NSSFs
-	nssfList := &corev1.PodList{}
-	opts = []client.ListOption{
-		client.InNamespace(instance.Namespace),
-		client.MatchingLabels(map[string]string{"app.kubernetes.io/instance": "free5gc", "app.kubernetes.io/name": "nssf"}),
-	}
-	err = r.client.List(context.TODO(), nssfList, opts...)
+	// Update BansSlice.Status.Ready
+	instance.Status.Ready = true
+	err = r.client.Status().Update(context.TODO(), instance)
 	if err != nil {
+		reqLogger.Error(err, "Failed to update BansSlice status")
 		return reconcile.Result{}, err
-	}
-
-	// Configure all NSSFs through management REST API
-	client := &http.Client{}
-	client.Transport = &http2.Transport{
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-	}
-	nssfManagementDocument, err := r.newNssfManagementDocument(instance)
-	if err != nil {
-		reqLogger.Error(err, "Cannot generate NSSF management object")
-		return reconcile.Result{}, nil
-	}
-	buf, err := json.Marshal(nssfManagementDocument)
-	if err != nil {
-		reqLogger.Error(err, "Cannot marshal NssfManagementDocument to JSON format")
-		return reconcile.Result{}, nil
-	}
-	for _, nssf := range nssfList.Items {
-		nssfIp := nssf.Status.PodIP
-		reqLogger.Info("Configuring NSSF with new S-NSSAI list through management REST API", "PodIP", nssfIp, "S-NSSAIList", instance.Spec.SnssaiList)
-		req, err := http.NewRequest("POST",
-			"https://"+nssfIp+":29531/nnssf-management/v1/network-slice-information",
-			bytes.NewReader(buf))
-		if err != nil {
-			return reconcile.Result{}, err
-		}
-		req.Header.Set("Content-Type", "application/json")
-		resp, err := client.Do(req)
-		if err != nil {
-			return reconcile.Result{}, err
-		}
-
-		// Read response from NSSF
-		if resp.StatusCode == http.StatusCreated {
-			reqLogger.Info("Successfully configure NSSF", "PodIP", nssfIp)
-		} else {
-			defer resp.Body.Close()
-			buf, err = ioutil.ReadAll(resp.Body)
-			if err != nil {
-				return reconcile.Result{}, err
-			}
-			reqLogger.Info("Failed to configure NSSF", "HTTPStatus", resp.Status, "ResponseBody", buf)
-		}
 	}
 
 	return reconcile.Result{}, nil
@@ -472,4 +428,120 @@ func newBandwidthSlice(b *bansv1alpha1.BansSlice, f *bansv1alpha1.Free5GCSlice) 
 			},
 		},
 	}
+}
+
+// waitForFree5GCSlice waits for Free5GCSlice of the given name and namespace to be added
+func (r *ReconcileBansSlice) waitForFree5GCSlice(name, namespace string) {
+	free5gcslice := &bansv1alpha1.Free5GCSlice{}
+	startTime := time.Now()
+	for {
+		err := r.client.Get(context.TODO(), types.NamespacedName{Name: name, Namespace: namespace}, free5gcslice)
+		if err != nil && errors.IsNotFound(err) {
+			// No Free5GCSlice found
+			reqLogger.Info("Free5GCSlice not found after created", "Namespace", namespace, "Name", name)
+		} else if err != nil {
+			reqLogger.Error(err, "Failed to get Free5GCSlice")
+		} else {
+			// Free5GCSlice exists
+			if free5gcslice.Status.State == Free5GCSliceStateCreating {
+				reqLogger.Info("Waiting 3 seconds for Free5GCSlice to be created", "Namespace", free5gcslice.Namespace, "Name", free5gcslice.Name)
+			} else if free5gcslice.Status.State == Free5GCSliceStateRunning {
+				endTime := time.Now()
+				elapsed := endTime.Sub(startTime)
+				msg := "Successfully create Free5GCSlice in " + strconv.FormatFloat(float64(elapsed)/float64(time.Second), 'f', 2, 64) + " seconds"
+				reqLogger.Info(msg, "Namespace", free5gcslice.Namespace, "Name", free5gcslice.Name)
+				break
+			} else {
+				// StateNull
+			}
+		}
+		time.Sleep(3 * time.Second)
+	}
+}
+
+// waitForBandwidthSlice waits for BandwidthSlice of the given name and namespace to be added
+func (r *ReconcileBansSlice) waitForBandwidthSlice(name, namespace string) {
+	bandwidthslice := &bansv1alpha1.BandwidthSlice{}
+	startTime := time.Now()
+	for {
+		err := r.client.Get(context.TODO(), types.NamespacedName{Name: name, Namespace: namespace}, bandwidthslice)
+		if err != nil && errors.IsNotFound(err) {
+			// No BandwidthSlice found
+			reqLogger.Info("BandwidthSlice not found after created", "Namespace", namespace, "Name", name)
+		} else if err != nil {
+			reqLogger.Error(err, "Failed to get BandwidthSlice")
+		} else {
+			// BandwidthSlice exists
+			if bandwidthslice.Status.State == BandwidthSliceStatePending {
+				reqLogger.Info("Waiting 3 seconds for BandwidthSlice to be added", "Namespace", bandwidthslice.Namespace, "Name", bandwidthslice.Name)
+			} else if bandwidthslice.Status.State == BandwidthSliceStateAdded {
+				endTime := time.Now()
+				elapsed := endTime.Sub(startTime)
+				msg := "Successfully create BandwidthSlice in " + strconv.FormatFloat(float64(elapsed)/float64(time.Second), 'f', 2, 64) + " seconds"
+				reqLogger.Info(msg, "Namespace", bandwidthslice.Namespace, "Name", bandwidthslice.Name)
+				break
+			} else {
+				// StateNull
+			}
+		}
+		time.Sleep(3 * time.Second)
+	}
+}
+
+// configureNssfs configures all NSSFs with the given BansSlice
+func (r *ReconcileBansSlice) configureNssfs(b *bansv1alpha1.BansSlice) error {
+	// Return all NSSFs
+	nssfList := &corev1.PodList{}
+	opts := []client.ListOption{
+		client.InNamespace(b.Namespace),
+		client.MatchingLabels(map[string]string{"app.kubernetes.io/instance": "free5gc", "app.kubernetes.io/name": "nssf"}),
+	}
+	err := r.client.List(context.TODO(), nssfList, opts...)
+	if err != nil {
+		return err
+	}
+
+	// Configure all NSSFs through management REST API
+	client := &http.Client{}
+	client.Transport = &http2.Transport{
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+	}
+	nssfManagementDocument, err := r.newNssfManagementDocument(b)
+	if err != nil {
+		reqLogger.Error(err, "Cannot generate NSSF management object")
+		return err
+	}
+	buf, err := json.Marshal(nssfManagementDocument)
+	if err != nil {
+		reqLogger.Error(err, "Cannot marshal NssfManagementDocument to JSON format")
+		return err
+	}
+	for _, nssf := range nssfList.Items {
+		nssfIp := nssf.Status.PodIP
+		reqLogger.Info("Configuring NSSF with new S-NSSAI list through management REST API", "PodIP", nssfIp, "S-NSSAIList", b.Spec.SnssaiList)
+		req, err := http.NewRequest("POST",
+			"https://"+nssfIp+":29531/nnssf-management/v1/network-slice-information",
+			bytes.NewReader(buf))
+		if err != nil {
+			return err
+		}
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := client.Do(req)
+		if err != nil {
+			return err
+		}
+
+		// Read response from NSSF
+		if resp.StatusCode == http.StatusCreated {
+			reqLogger.Info("Successfully configure NSSF", "PodIP", nssfIp)
+		} else {
+			defer resp.Body.Close()
+			buf, err = ioutil.ReadAll(resp.Body)
+			if err != nil {
+				return err
+			}
+			reqLogger.Info("Failed to configure NSSF", "HTTPStatus", resp.Status, "ResponseBody", buf)
+		}
+	}
+	return nil
 }
