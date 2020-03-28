@@ -323,7 +323,7 @@ func (r *ReconcileBansSlice) Reconcile(request reconcile.Request) (reconcile.Res
 	}
 
 	// Wait for Free5GCSlice object being running
-	r.waitForFree5GCSlice(instance.Name+"-free5gcslice", instance.Namespace)
+	free5gcslice = r.waitForFree5GCSlice(instance.Name+"-free5gcslice", instance.Namespace)
 
 	// Create new BandwidthSlice for free5GC slices
 	bandwidthslice := newBandwidthSlice(instance, free5gcslice)
@@ -431,7 +431,7 @@ func newBandwidthSlice(b *bansv1alpha1.BansSlice, f *bansv1alpha1.Free5GCSlice) 
 }
 
 // waitForFree5GCSlice waits for Free5GCSlice of the given name and namespace to be added
-func (r *ReconcileBansSlice) waitForFree5GCSlice(name, namespace string) {
+func (r *ReconcileBansSlice) waitForFree5GCSlice(name, namespace string) *bansv1alpha1.Free5GCSlice {
 	free5gcslice := &bansv1alpha1.Free5GCSlice{}
 	startTime := time.Now()
 	for {
@@ -457,10 +457,11 @@ func (r *ReconcileBansSlice) waitForFree5GCSlice(name, namespace string) {
 		}
 		time.Sleep(3 * time.Second)
 	}
+	return free5gcslice
 }
 
 // waitForBandwidthSlice waits for BandwidthSlice of the given name and namespace to be added
-func (r *ReconcileBansSlice) waitForBandwidthSlice(name, namespace string) {
+func (r *ReconcileBansSlice) waitForBandwidthSlice(name, namespace string) *bansv1alpha1.BandwidthSlice {
 	bandwidthslice := &bansv1alpha1.BandwidthSlice{}
 	startTime := time.Now()
 	for {
@@ -486,6 +487,7 @@ func (r *ReconcileBansSlice) waitForBandwidthSlice(name, namespace string) {
 		}
 		time.Sleep(3 * time.Second)
 	}
+	return bandwidthslice
 }
 
 // configureNssfs configures all NSSFs with the given BansSlice
