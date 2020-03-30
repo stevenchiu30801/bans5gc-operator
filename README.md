@@ -2,6 +2,8 @@
 
 A Kubernetes operator for deploying and managing BANS slices for BANS 5GC.
 
+NOTE: In *cluster-only* branch, there is no fabric network existing. Therefore, BANS Operator simply requests bandwidth slices to ONOS Operator but there is no use of ONOS controller.
+
 ## Prerequisites
 
 See [operator-framework/operator-sdk](https://github.com/operator-framework/operator-sdk#prerequisites).
@@ -11,9 +13,9 @@ See [operator-framework/operator-sdk](https://github.com/operator-framework/oper
 sudo apt instal make
 
 # Install dependencies
-git clone https://github.com/stevenchiu30801/free5gc-operator.git
+git clone -b cluster-only https://github.com/stevenchiu30801/free5gc-operator.git
 cd free5gc-operator && make install
-git clone https://github.com/stevenchiu30801/onos-bandwidth-operator.git
+git clone -b cluster-only https://github.com/stevenchiu30801/onos-bandwidth-operator.git
 cd onos-bandwidth-operator && make install
 ```
 
