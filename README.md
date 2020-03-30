@@ -11,9 +11,9 @@ See [operator-framework/operator-sdk](https://github.com/operator-framework/oper
 sudo apt instal make
 
 # Install dependencies
-git clone https://github.com/stevenchiu30801/free5gc-operator.git
+git clone -b bmv2-fabric https://github.com/stevenchiu30801/free5gc-operator.git
 cd free5gc-operator && make install
-git clone https://github.com/stevenchiu30801/onos-bandwidth-operator.git
+git clone -b bmv2-fabric https://github.com/stevenchiu30801/onos-bandwidth-operator.git
 cd onos-bandwidth-operator && make install
 ```
 
