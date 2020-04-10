@@ -50,6 +50,9 @@ const (
 	SCTPProtocol uint8 = 132
 )
 
+// BANS slice index
+var bansSliceIdx int = 1
+
 /**
 * USER ACTION REQUIRED: This is a scaffold file intended for the user to modify with their own Controller
 * business logic.  Delete these comments after modifying this file.*
@@ -203,7 +206,8 @@ func (r *ReconcileBansSlice) Reconcile(request reconcile.Request) (reconcile.Res
 				return reconcile.Result{}, err
 			}
 
-			targetBandwidthSlice := newBandwidthSlice(instance, free5gcslice)
+			// Create target BandwidthSlice with dummy BANS slice index
+			targetBandwidthSlice := newBandwidthSlice(instance, 0, free5gcslice)
 			if !reflect.DeepEqual(targetBandwidthSlice.Spec, bandwidthslice.Spec) {
 				// Update BansSlice.Status.Ready
 				instance.Status.Ready = false
@@ -268,9 +272,10 @@ func (r *ReconcileBansSlice) Reconcile(request reconcile.Request) (reconcile.Res
 			if err != nil && errors.IsNotFound(err) {
 				// No BandwidthSlice exists
 				reqLogger.Info("No BandwidthSlice exists for BansSlice", "BansSlice.Namespace", instance.Namespace, "BansSlice.Name", instance.Name)
+				tmpBansSliceIdx := bansSliceIdx
+				bansSliceIdx++
 				// Create new BandwidthSlice only for free5GC slices
-				free5gcslice := newFree5GCSlice(instance)
-				bandwidthslice := newBandwidthSlice(instance, free5gcslice)
+				bandwidthslice := newBandwidthSlice(instance, tmpBansSliceIdx, free5gcslice)
 				// Set BansSlice instance as the owner and controller
 				if err := controllerutil.SetControllerReference(instance, bandwidthslice, r.scheme); err != nil {
 					return reconcile.Result{}, err
@@ -309,8 +314,10 @@ func (r *ReconcileBansSlice) Reconcile(request reconcile.Request) (reconcile.Res
 		}
 	}
 
+	tmpBansSliceIdx := bansSliceIdx
+	bansSliceIdx++
 	// Create new Free5GCSlice
-	free5gcslice = newFree5GCSlice(instance)
+	free5gcslice = newFree5GCSlice(instance, tmpBansSliceIdx)
 	// Set BansSlice instance as the owner and controller
 	if err = controllerutil.SetControllerReference(instance, free5gcslice, r.scheme); err != nil {
 		return reconcile.Result{}, err
@@ -326,7 +333,7 @@ func (r *ReconcileBansSlice) Reconcile(request reconcile.Request) (reconcile.Res
 	free5gcslice = r.waitForFree5GCSlice(instance.Name+"-free5gcslice", instance.Namespace)
 
 	// Create new BandwidthSlice for free5GC slices
-	bandwidthslice := newBandwidthSlice(instance, free5gcslice)
+	bandwidthslice := newBandwidthSlice(instance, tmpBansSliceIdx, free5gcslice)
 	// Set BansSlice instance as the owner and controller
 	if err := controllerutil.SetControllerReference(instance, bandwidthslice, r.scheme); err != nil {
 		return reconcile.Result{}, err
@@ -360,9 +367,10 @@ func (r *ReconcileBansSlice) Reconcile(request reconcile.Request) (reconcile.Res
 }
 
 // newFree5GCSlice returns a new Free5GCSlice object with BansSliceSpec
-func newFree5GCSlice(b *bansv1alpha1.BansSlice) *bansv1alpha1.Free5GCSlice {
+func newFree5GCSlice(b *bansv1alpha1.BansSlice, bansSliceIdx int) *bansv1alpha1.Free5GCSlice {
 	labels := map[string]string{
-		"app": b.Name,
+		"app":           b.Name,
+		"bans.io/slice": "slice" + strconv.Itoa(bansSliceIdx),
 	}
 	return &bansv1alpha1.Free5GCSlice{
 		ObjectMeta: metav1.ObjectMeta{
@@ -378,9 +386,10 @@ func newFree5GCSlice(b *bansv1alpha1.BansSlice) *bansv1alpha1.Free5GCSlice {
 }
 
 // newBandwidthSlice returns a new BandwidthSlice object with BansSliceSpec and Free5GCSliceStatus
-func newBandwidthSlice(b *bansv1alpha1.BansSlice, f *bansv1alpha1.Free5GCSlice) *bansv1alpha1.BandwidthSlice {
+func newBandwidthSlice(b *bansv1alpha1.BansSlice, bansSliceIdx int, f *bansv1alpha1.Free5GCSlice) *bansv1alpha1.BandwidthSlice {
 	labels := map[string]string{
-		"app": b.Name,
+		"app":           b.Name,
+		"bans.io/slice": "slice" + strconv.Itoa(bansSliceIdx),
 	}
 	var (
 		priority uint = 2
