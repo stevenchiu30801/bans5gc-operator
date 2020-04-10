@@ -269,7 +269,6 @@ func (r *ReconcileBansSlice) Reconcile(request reconcile.Request) (reconcile.Res
 				// No BandwidthSlice exists
 				reqLogger.Info("No BandwidthSlice exists for BansSlice", "BansSlice.Namespace", instance.Namespace, "BansSlice.Name", instance.Name)
 				// Create new BandwidthSlice only for free5GC slices
-				free5gcslice := newFree5GCSlice(instance)
 				bandwidthslice := newBandwidthSlice(instance, free5gcslice)
 				// Set BansSlice instance as the owner and controller
 				if err := controllerutil.SetControllerReference(instance, bandwidthslice, r.scheme); err != nil {
