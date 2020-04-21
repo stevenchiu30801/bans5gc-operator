@@ -26,7 +26,7 @@ install: ## Install all resources (CR/CRD's, RBAC and Operator)
 	kubectl apply -f deploy/service_account.yaml -n ${NAMESPACE}
 	$(call echo_green," ....... Applying Operator .......")
 	kubectl apply -f deploy/operator.yaml -n ${NAMESPACE}
-	${SHELL} scripts/wait_pods_running.sh ${NAMESPACE}
+	# ${SHELL} scripts/wait_pods_running.sh ${NAMESPACE}
 	# $(call echo_green," ....... Creating the CRs .......")
 	# kubectl apply -f deploy/crds/bans.io_v1alpha1_bansslice_cr.yaml -n ${NAMESPACE}
 
